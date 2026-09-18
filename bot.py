@@ -23,7 +23,7 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    bot.reply_to(message, "မင်္ဂလာပါ! YouTube, TikTok, Facebook လင့်ခ်များ ပို့ပေးပါ၊ မီဒီယာ ဒေါင်းလုဒ်လုပ်ပေးပါမည်။")
+    bot.reply_to(message, "မင်္ဂလာပါ! YouTube, TikTok, Facebook လင့်ခ်များ ပို့ပေးပါ မအေဘေးလေးရေ၊ ဗီဒီယိုများ ဒေါင်းလုဒ်လုပ်ပေးပါမည်။")
 
 @bot.message_handler(func=lambda message: True)
 def process_link(message):
@@ -31,14 +31,16 @@ def process_link(message):
     if not url.startswith(("http://", "https://")):
         return
 
-    status_msg = bot.reply_to(message, "⬇️ မီဒီယာကို ရယူနေပါသည်... ခဏစောင့်ပေးပါ။")
+    status_msg = bot.reply_to(message, "⬇️ ဗီဒီယိုကို ရယူနေပါသည်... မအေဘေး ခဏစောင့်ပေးပါ။")
 
     ydl_opts = {
         'outtmpl': 'downloaded_media.%(ext)s',
         'format': 'best[filesize<50M]/best',
         'quiet': True,
+        'extractor_args': {
+            'youtube': {'player_client': ['android', 'ios']}
+        }
     }
-
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
