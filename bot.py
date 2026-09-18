@@ -2,6 +2,8 @@ import os
 import threading
 import telebot
 import yt_dlp
+import urllib.request
+import json
 from flask import Flask
 
 # Web Server Setup
@@ -23,7 +25,7 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    bot.reply_to(message, "မင်္ဂလာပါ! YouTube, TikTok, Facebook လင့်ခ်များ ပို့ပေးပါ မအေဘေးလေးရေ၊ ဗီဒီယိုများ ဒေါင်းလုဒ်လုပ်ပေးပါမည်။")
+    bot.reply_to(message, "မင်္ဂလာပါ! YouTube, TikTok, Facebook လင့်ခ်များ ပို့ပေးပါ၊ မီဒီယာ ဒေါင်းလုဒ်လုပ်ပေးပါမည်။")
 
 @bot.message_handler(func=lambda message: True)
 def process_link(message):
@@ -31,9 +33,30 @@ def process_link(message):
     if not url.startswith(("http://", "https://")):
         return
 
-    status_msg = bot.reply_to(message, "⬇️ ဗီဒီယိုကို ရယူနေပါသည်... မအေဘေး ခဏစောင့်ပေးပါ။")
+    status_msg = bot.reply_to(message, "⬇️ မီဒီယာကို ရယူနေပါသည်... ခဏစောင့်ပေးပါ။")
 
-        ydl_opts = {
+    # TikTok လင့်ခ်ဖြစ်ပါက API အသုံးပြု၍ ဒေါင်းလုဒ်ဆွဲခြင်း
+    if "tiktok.com" in url:
+        try:
+            api_url = f"https://www.tikwm.com/api/?url={url}"
+            req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req) as response:
+                data = json.loads(response.read().decode())
+                if data.get('code') == 0:
+                    video_url = data['data']['play']
+                    filename = "tiktok_video.mp4"
+                    urllib.request.urlretrieve(video_url, filename)
+                    with open(filename, 'rb') as file:
+                        bot.send_video(message.chat.id, file, reply_to_message_id=message.message_id)
+                    if os.path.exists(filename):
+                        os.remove(filename)
+                    bot.delete_message(message.chat.id, status_msg.message_id)
+                    return
+        except Exception:
+            pass
+
+    # Facebook နှင့် YouTube လင့်ခ်များအတွက် yt-dlp အသုံးပြုခြင်း
+    ydl_opts = {
         'outtmpl': 'downloaded_media.%(ext)s',
         'format': 'best[filesize<50M]/best',
         'quiet': True,
@@ -63,3 +86,4 @@ def process_link(message):
 
 print("Bot is running...")
 bot.infinity_polling()
+
