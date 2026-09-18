@@ -33,10 +33,11 @@ def process_link(message):
 
     status_msg = bot.reply_to(message, "⬇️ ဗီဒီယိုကို ရယူနေပါသည်... မအေဘေး ခဏစောင့်ပေးပါ။")
 
-    ydl_opts = {
+        ydl_opts = {
         'outtmpl': 'downloaded_media.%(ext)s',
         'format': 'best[filesize<50M]/best',
         'quiet': True,
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'extractor_args': {
             'youtube': {'player_client': ['android', 'ios']}
         }
