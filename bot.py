@@ -2,8 +2,7 @@ import os
 import threading
 import telebot
 import yt_dlp
-import urllib.request
-import json
+import requests
 from flask import Flask
 
 # Web Server Setup
@@ -25,7 +24,7 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    bot.reply_to(message, "မင်္ဂလာပါ! YouTube, TikTok, Facebook လင့်ခ်များ ပို့ပေးပါ၊ မီဒီယာ ဒေါင်းလုဒ်လုပ်ပေးပါမည်။")
+    bot.reply_to(message, "မင်္ဂလာပါ! TikTok, YouTube, Facebook လင့်ခ်များ ပို့ပေးပါ၊ မီဒီယာ ဒေါင်းလုဒ်လုပ်ပေးပါမည်။")
 
 @bot.message_handler(func=lambda message: True)
 def process_link(message):
@@ -34,95 +33,55 @@ def process_link(message):
         return
 
     status_msg = bot.reply_to(message, "⬇️ မီဒီယာကို ရယူနေပါသည်... ခဏစောင့်ပေးပါ။")
+    filename = "downloaded_media.mp4"
 
-    # 1. TikTok လင့်ခ်ဖြစ်ပါက TikWM API အသုံးပြုမည်
+    # 1. TikTok ဒေါင်းလုဒ်ဆွဲခြင်း (ကြော်ငြာ စစ်ထုတ်ထားသည်)
     if "tiktok.com" in url or "douyin.com" in url:
         try:
-            api_url = f"https://www.tikwm.com/api/?url={url}"
-            req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=20) as response:
-                data = json.loads(response.read().decode())
-                if data.get('code') == 0:
-                    video_url = data['data']['play']
-                    filename = "tiktok_video.mp4"
-                    urllib.request.urlretrieve(video_url, filename)
-                    with open(filename, 'rb') as file:
-                        bot.send_video(message.chat.id, file, reply_to_message_id=message.message_id)
-                    if os.path.exists(filename):
-                        os.remove(filename)
-                    bot.delete_message(message.chat.id, status_msg.message_id)
-                    return
-        except Exception as e:
-            print(f"TikTok API error: {e}")
+            api_res = requests.get(f"https://www.tikwm.com/api/?url={url}", headers={'User-Agent': 'Mozilla/5.0'}, timeout=15).json()
+            if api_res.get('code') == 0 and 'data' in api_res and 'play' in api_res['data']:
+                video_url = api_res['data']['play']
+                video_bytes = requests.get(video_url, timeout=30).content
+                with open(filename, 'wb') as f:
+                    f.write(video_bytes)
+                
+                with open(filename, 'rb') as f:
+                    bot.send_video(message.chat.id, f, reply_to_message_id=message.message_id)
+                
+                if os.path.exists(filename):
+                    os.remove(filename)
+                bot.delete_message(message.chat.id, status_msg.message_id)
+                return
+        except Exception:
+            pass
 
-    # 2. YouTube လင့်ခ်ဖြစ်ပါက Cobalt API ဖြင့် Render IP Block ကျော်လွှားမည်
-    if "youtube.com" in url or "youtu.be" in url:
-        try:
-            cobalt_apis = [
-                "https://api.cobalt.tools",
-                "https://co.wuk.sh",
-                "https://cobalt.api.scip.be"
-            ]
-            req_data = json.dumps({"url": url, "videoQuality": "720"}).encode('utf-8')
-            headers = {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'User-Agent': 'Mozilla/5.0'
-            }
-            
-            for api in cobalt_apis:
-                try:
-                    req = urllib.request.Request(api, data=req_data, headers=headers, method='POST')
-                    with urllib.request.urlopen(req, timeout=15) as resp:
-                        res_json = json.loads(resp.read().decode('utf-8'))
-                        download_url = res_json.get('url')
-                        if download_url:
-                            filename = "youtube_video.mp4"
-                            dl_req = urllib.request.Request(download_url, headers={'User-Agent': 'Mozilla/5.0'})
-                            with urllib.request.urlopen(dl_req, timeout=60) as v_resp, open(filename, 'wb') as f:
-                                f.write(v_resp.read())
-                            
-                            with open(filename, 'rb') as file:
-                                bot.send_video(message.chat.id, file, reply_to_message_id=message.message_id)
-                            
-                            if os.path.exists(filename):
-                                os.remove(filename)
-                            bot.delete_message(message.chat.id, status_msg.message_id)
-                            return
-                except Exception as inner_e:
-                    print(f"Cobalt instance {api} error: {inner_e}")
-                    continue
-        except Exception as e:
-            print(f"YouTube Cobalt error: {e}")
-
-    # 3. Facebook နှင့် အခြားလင့်ခ်များအတွက် yt-dlp အသုံးပြုမည်
+    # 2. YouTube / Facebook / အခြား လင့်ခ်များ ဒေါင်းလုဒ်ဆွဲခြင်း
     ydl_opts = {
-        'outtmpl': 'downloaded_media.%(ext)s',
+        'outtmpl': filename,
         'format': 'best[filesize<50M]/best',
         'quiet': True,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'no_warnings': True,
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'extractor_args': {
             'youtube': {'player_client': ['android', 'ios']}
         }
     }
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
-
-        with open(filename, 'rb') as file:
-            if info.get('ext') in ['jpg', 'jpeg', 'png', 'webp']:
-                bot.send_photo(message.chat.id, file, reply_to_message_id=message.message_id)
-            else:
-                bot.send_video(message.chat.id, file, reply_to_message_id=message.message_id)
+            ydl.download([url])
 
         if os.path.exists(filename):
+            with open(filename, 'rb') as f:
+                bot.send_video(message.chat.id, f, reply_to_message_id=message.message_id)
             os.remove(filename)
+            bot.delete_message(message.chat.id, status_msg.message_id)
+        else:
+            bot.edit_message_text("❌ မီဒီယာ ဒေါင်းလုဒ်လုပ်၍ မရပါ၊ လင့်ခ်ကို ပြန်စစ်ပေးပါ။", message.chat.id, status_msg.message_id)
 
-        bot.delete_message(message.chat.id, status_msg.message_id)
-
-    except Exception as e:
-        bot.edit_message_text(f"❌ ဒေါင်းလုဒ်လုပ်ရာတွင် အမှားအယွင်းရှိပါသည်: {str(e)}", message.chat.id, status_msg.message_id)
+    except Exception:
+        bot.edit_message_text("❌ မီဒီယာ ရယူရာတွင် အမှားအယွင်း ရှိနေပါသည်။ ခဏစောင့်ပြီး ပြန်စမ်းပါ။", message.chat.id, status_msg.message_id)
 
 print("Bot is running...")
 bot.infinity_polling()
+
